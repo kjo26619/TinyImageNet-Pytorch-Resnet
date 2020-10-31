@@ -54,3 +54,118 @@ Bottleneck 구조는 ResNet에서 Residual Block으로 늘어난 Layer의 수 �
 
 Dimension을 줄인 뒤 3x3 Convolution Layer를 작업함으로써 더 낮은 연산 시간을 갖게 되는 것입니다. 그 이후 1x1 Convolution Layer로 다시 Dimension을 확장시켜 줍니다.
 
+이러한 작업들을 통해서 ResNet에서는 효과적으로 Layer 수를 늘릴 수 있었고, 더욱 높은 Accuracy를 얻을 수 있었습니다.
+
+# Code
+
+```
+class ResidualBlock(nn.Module):
+    def __init__(self, input_channel, middle_channel, output_channel, s=1):
+        super(ResidualBlock, self).__init__()
+        self.stride = s
+
+        self.skip_connection = nn.Sequential(
+            nn.Conv2d(input_channel, output_channel, 1, stride=s, bias=False),
+            nn.BatchNorm2d(output_channel)
+        )
+
+        self.block = nn.Sequential(
+            nn.Conv2d(in_channels=input_channel, out_channels=middle_channel, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(middle_channel),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=middle_channel, out_channels=middle_channel, kernel_size=3, stride=s, bias=False, padding=1),
+            nn.BatchNorm2d(middle_channel),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=middle_channel, out_channels=output_channel, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(output_channel),
+            nn.ReLU()
+        )
+
+    def forward(self, x):
+        if self.stride != 1:
+            skip = self.skip_connection(x)
+        else:
+            skip = x
+
+        conv = self.block(x)
+
+        x = skip + conv
+        return x
+```
+
+Bottleneck 구조를 갖는 Residual Block입니다.
+
+기존 input이 들어오면, 1x1 Convolution Layer를 통해서 Channel을 줄여줍니다.
+
+줄어들은 Channel을 가지고 3x3 Convolution Layer로 Convolution 작업을 진행합니다.
+
+마지막으로 다시 Out Channel 만큼 Dimension을 확장시켜줍니다.
+
+Skip Connection의 경우 Down Sampling 즉, 이미지의 크기를 줄일 경우 Skip Connection도 같이 크기가 줄어들어야 합니다.
+
+그래서 Stride가 1이 아닐 경우 1x1 Convolution Layer를 이용하여 줄여줍니다.
+
+만약 Stride가 1일 경우 기존의 Residual Block이므로 Skip Connection은 입력인 x가 되는 것이고, 마지막에 Skip Connection과 Bottleneck에서 나온 F(x)를 더해주면 됩니다.
+
+```
+class ResNet(nn.Module):
+    def __init__(self):
+        super(ResNet, self).__init__()
+        self.conv = nn.Conv2d(3, 64, 7)
+        self.max_pool = nn.MaxPool2d(kernel_size=3,stride=1)
+
+        self.resBlock1 = ResidualBlock(64, 64, 256, 2)
+        self.resBlock2 = ResidualBlock(256, 64, 256, 1)
+
+        self.resBlock3 = ResidualBlock(256, 128, 512, 2)
+        self.resBlock4 = ResidualBlock(512, 128, 512, 1)
+
+        self.resBlock5 = ResidualBlock(512, 256, 1024, 2)
+        self.resBlock6 = ResidualBlock(1024, 256, 1024, 1)
+
+        self.resBlock7 = ResidualBlock(1024, 512, 2048, 2)
+        self.resBlock8 = ResidualBlock(2048, 512, 2048, 1)
+
+        self.avg_pool = nn.AvgPool2d(3)
+        self.flat = nn.Flatten()
+        self.fc1 = nn.Linear(2048, 2048)
+        self.fc2 = nn.Linear(2048, 1000)
+        self.fc3 = nn.Linear(1000, 100)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.max_pool(x)
+        x = self.resBlock1(x)
+        x = self.resBlock2(x)
+        x = self.resBlock2(x)
+
+        x = self.resBlock3(x)
+        x = self.resBlock4(x)
+        x = self.resBlock4(x)
+        x = self.resBlock4(x)
+
+        x = self.resBlock5(x)
+        x = self.resBlock6(x)
+        x = self.resBlock6(x)
+        x = self.resBlock6(x)
+        x = self.resBlock6(x)
+        x = self.resBlock6(x)
+
+        x = self.resBlock7(x)
+        features = self.resBlock8(x)
+
+        x = self.avg_pool(features)
+        
+        x = x.view(features.size(0), -1)
+        
+        fc = self.fc1(x)
+        fc = self.fc2(fc)
+        out = self.fc3(fc)
+
+        return out, features
+```
+
+그리고 Residual Block을 활용하여 ResNet을 구성합니다. 위는 ResNet 50을 기반으로 TinyImageNet에 맞게 하이퍼 파라미터를 조절해주었습니다.
+
+사용하는 이미지 크기에 맞게 Down Sampling과 Avg Pool의 사이즈를 조절해주시면 됩니다.
+
