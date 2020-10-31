@@ -54,7 +54,6 @@ class ResNet(nn.Module):
         self.fc1 = nn.Linear(2048, 2048)
         self.fc2 = nn.Linear(2048, 1000)
         self.fc3 = nn.Linear(1000, 100)
-        self.classifier = nn.Softmax(dim=1)
 
     def forward(self, x):
         x = self.conv(x)
@@ -85,6 +84,5 @@ class ResNet(nn.Module):
         fc = self.fc1(x)
         fc = self.fc2(fc)
         out = self.fc3(fc)
-        out = self.classifier(out)
 
         return out, features
